@@ -79,9 +79,9 @@ typedef struct Player {
     bool falling;
 } Player;
 
-void CollisionFinnaHappen(EnvItem* ei, int envIndex, Player* p, float delta)
+void CollisionFinnaHappen(EnvItem& ei, int envIndex, Player* p, float delta)
 {
-    if (ei->type == EnvItemType::Nonsolid)
+    if (ei.type == EnvItemType::Nonsolid)
     {
         return;
     }
@@ -89,23 +89,22 @@ void CollisionFinnaHappen(EnvItem* ei, int envIndex, Player* p, float delta)
     Rectangle oldPos = p->rect;
     Rectangle newPosX = { oldPos.x + p->speed.x * delta, oldPos.y, oldPos.width, oldPos.height };
     Rectangle newPosY = { oldPos.x, oldPos.y + p->speed.y * delta, oldPos.width, oldPos.height };
-    bool collidedX = CheckCollisionRecs(newPosX, ei->rect);
-    bool collidedY = CheckCollisionRecs(newPosY, ei->rect);
+    bool collidedX = CheckCollisionRecs(newPosX, ei.rect);
+    bool collidedY = CheckCollisionRecs(newPosY, ei.rect);
 
-    if ((collidedX || collidedY) && ei->type == EnvItemType::Crystal)
+    if ((collidedX || collidedY) && ei.type == EnvItemType::Crystal)
     {
-        if (!ei->Crystal.respawning)
+        if (!ei.Crystal.respawning)
         {
-//            std::cout << "start respawn" << std::endl;
-            ei->Crystal.respawning = true;
-            ei->Crystal.respawnTimer = 5.0f;
+            ei.Crystal.respawning = true;
+            ei.Crystal.respawnTimer = 5.0f;
             p->dashRemaining = PLAYER_DASH_DIST;
         }
 
         return;
     }
 
-    if ((collidedX || collidedY) && ei->type == EnvItemType::Hazard)
+    if ((collidedX || collidedY) && ei.type == EnvItemType::Hazard)
     {
         p->rect.x = 20;
         p->rect.y = 300;
@@ -116,8 +115,8 @@ void CollisionFinnaHappen(EnvItem* ei, int envIndex, Player* p, float delta)
 
     if (collidedX)
     {
-        Rectangle collisionRecX = GetCollisionRec(newPosX, ei->rect);
-        if (oldPos.x < ei->rect.x)
+        Rectangle collisionRecX = GetCollisionRec(newPosX, ei.rect);
+        if (oldPos.x < ei.rect.x)
         {
             p->rect.x -= collisionRecX.width - p->speed.x * delta;
         }
@@ -134,8 +133,8 @@ void CollisionFinnaHappen(EnvItem* ei, int envIndex, Player* p, float delta)
     }
     if (collidedY)
     {
-        Rectangle collisionRecY = GetCollisionRec(newPosY, ei->rect);
-        if (oldPos.y < ei->rect.y)
+        Rectangle collisionRecY = GetCollisionRec(newPosY, ei.rect);
+        if (oldPos.y < ei.rect.y)
         {
             p->canJump = true;
             p->dashRemaining = PLAYER_DASH_DIST;
@@ -156,7 +155,7 @@ void CollisionFinnaHappen(EnvItem* ei, int envIndex, Player* p, float delta)
 
     if (collidedX)
     {
-        if (p->rect.y + p->rect.height / 2 >= ei->rect.y)
+        if (p->rect.y + p->rect.height / 2 >= ei.rect.y)
         {
             if (IsKeyDown(KEY_Z))
             {
@@ -297,16 +296,13 @@ void UpdatePlayer(Player *player, std::vector<EnvItem>& envItems, float delta)
     player->canJump = false;
     for (int i = 0; i < envItems.size(); i++)
     {
-        auto ei = envItems[i];
-        CollisionFinnaHappen(&ei, i, player, delta);
+        auto& ei = envItems[i];
+        CollisionFinnaHappen(ei, i, player, delta);
         if (ei.type == EnvItemType::Crystal && ei.Crystal.respawning)
         {
-//            std::cout << "timer" << std::endl;
             ei.Crystal.respawnTimer -= delta;
-//            std::cout << ei.Crystal.respawnTimer << std::endl;
             if (ei.Crystal.respawnTimer <= 0.0f)
             {
-//                std::cout << "hit 0" << std::endl;
                 ei.Crystal.respawning = false;
             }
         }
