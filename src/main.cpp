@@ -1,8 +1,15 @@
 #include "raylib.h"
+#include <stdlib.h>
 #include <iostream>
 #include <string>
 #include <array>
 #include <vector>
+#include <nlohmann/json.hpp>
+
+// for convenience
+using json = nlohmann::json;
+
+json levelEditor;
 
 constexpr auto SCREEN_WIDTH  = 800;
 constexpr auto SCREEN_HEIGHT = 450;
@@ -10,15 +17,34 @@ constexpr auto SCREEN_HEIGHT = 450;
 #define G 1000
 #define PLAYER_JUMP_SPD 350.0f
 #define PLAYER_HOR_SPD 200.0f
-#define PLAYER_DASH_SPD 500.0f
+#define PLAYER_DASH_SPD 666.6f
 #define PLAYER_DASH_SPD_DIAG 353.5f
 #define PLAYER_DASH_DIST 100.0f
+
+#define HAIR_COLOR_NORMAL ColorFromHSV({ 0, 0.7093, 0.6745 })
+#define HAIR_COLOR_DASHING ColorFromHSV({ 203.11200, 0.7333, 1.0000 })
+
+enum Scene
+{
+    Game,
+    LevelEditor
+};
+
+Scene gameScene = LevelEditor;
 
 enum EnvItemType {
     Nonsolid,
     Solid,
     Hazard,
     Crystal
+};
+
+enum Direction
+{
+    Up,
+    Right,
+    Down,
+    Left
 };
 
 struct EnvItem {
@@ -40,6 +66,7 @@ struct EnvItem {
         struct
         {
             Color color;
+            Direction direction;
         } Hazard;
 
         struct
@@ -49,6 +76,12 @@ struct EnvItem {
         } Crystal;
     };
 };
+
+std::ostream& operator<<(std::ostream& stream, const Vector2& vec)
+{
+    stream << "Vector { x: " << vec.x << ", y: " << vec.y << " }";
+    return stream;
+}
 
 std::ostream& operator<<(std::ostream& stream, const Rectangle& rect)
 {
@@ -66,6 +99,7 @@ typedef struct Player {
     Rectangle rect;
     Vector2 speed;
     Vector2 momentum;
+    Vector2 respawnPoint;
     bool canMove;
     float moveTimer;
     bool canJump;
@@ -77,18 +111,60 @@ typedef struct Player {
     int frameCounter;
     bool facingLeft;
     bool falling;
+    float stamina;
+    std::array<Vector2, 5> hair;
 } Player;
 
-void CollisionFinnaHappen(EnvItem& ei, int envIndex, Player* p, float delta)
+Player player = { 0 };
+
+Rectangle editorPreviewRectangle = {10, 10, 100, 20 };
+
+std::vector<EnvItem> envItems = {
+    {{ 290, 440, 20, 20 }, EnvItemType::Crystal },
+    {{ 0, 0, 1000, 400 }, EnvItemType::Nonsolid, { LIGHTGRAY } },
+    {{ 0, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
+    {{ 400, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
+    {{ 800, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
+    {{ 250, 300, 100, 10 }, EnvItemType::Solid, { GRAY } },
+    {{ 650, 300, 100, 20 }, EnvItemType::Hazard, { RED } },
+    {{ 200, 580, 200, 20 }, EnvItemType::Hazard, { RED } },
+    {{ 600, 580, 200, 20 }, EnvItemType::Hazard, { RED } },
+    {{ -1000, 1000, 3000, 20 }, EnvItemType::Hazard, { RED } }
+};
+
+void OnDeath(Player& p)
+{
+    for (auto& ei : envItems)
+    {
+        if (ei.type == EnvItemType::Crystal)
+        {
+            ei.Crystal.respawning = false;
+            ei.Crystal.respawnTimer = 0.0f;
+        }
+    }
+    p.rect.x = p.respawnPoint.x;
+    p.rect.y = p.respawnPoint.y;
+    p.speed.x = 0;
+    p.speed.y = 0;
+}
+
+enum CollisionResult
+{
+    None,
+    DashRecharge,
+    Death
+};
+
+CollisionResult CollisionFinnaHappen(EnvItem& ei, int envIndex, float delta)
 {
     if (ei.type == EnvItemType::Nonsolid)
     {
-        return;
+        return CollisionResult::None;
     }
 
-    Rectangle oldPos = p->rect;
-    Rectangle newPosX = { oldPos.x + p->speed.x * delta, oldPos.y, oldPos.width, oldPos.height };
-    Rectangle newPosY = { oldPos.x, oldPos.y + p->speed.y * delta, oldPos.width, oldPos.height };
+    Rectangle oldPos = player.rect;
+    Rectangle newPosX = { oldPos.x + player.speed.x * delta, oldPos.y, oldPos.width, oldPos.height };
+    Rectangle newPosY = { oldPos.x, oldPos.y + player.speed.y * delta, oldPos.width, oldPos.height };
     bool collidedX = CheckCollisionRecs(newPosX, ei.rect);
     bool collidedY = CheckCollisionRecs(newPosY, ei.rect);
 
@@ -98,19 +174,15 @@ void CollisionFinnaHappen(EnvItem& ei, int envIndex, Player* p, float delta)
         {
             ei.Crystal.respawning = true;
             ei.Crystal.respawnTimer = 5.0f;
-            p->dashRemaining = PLAYER_DASH_DIST;
+            player.dashRemaining = PLAYER_DASH_DIST;
         }
 
-        return;
+        return CollisionResult::DashRecharge;
     }
 
     if ((collidedX || collidedY) && ei.type == EnvItemType::Hazard)
     {
-        p->rect.x = 20;
-        p->rect.y = 300;
-        p->speed.x = 0;
-        p->speed.y = 0;
-        return;
+        return CollisionResult::Death;
     }
 
     if (collidedX)
@@ -118,186 +190,198 @@ void CollisionFinnaHappen(EnvItem& ei, int envIndex, Player* p, float delta)
         Rectangle collisionRecX = GetCollisionRec(newPosX, ei.rect);
         if (oldPos.x < ei.rect.x)
         {
-            p->rect.x -= collisionRecX.width - p->speed.x * delta;
+            player.rect.x -= collisionRecX.width - player.speed.x * delta;
         }
         else
         {
-            p->rect.x += collisionRecX.width + p->speed.x * delta;
+            player.rect.x += collisionRecX.width + player.speed.x * delta;
         }
-        p->speed.x = 0;
-        if (p->dashing)
+        player.speed.x = 0;
+        if (player.dashing)
         {
-            p->dashRemaining = 0.0f;
+            player.dashRemaining = 0.0f;
         }
-        p->dashing = false;
+        player.dashing = false;
     }
     if (collidedY)
     {
         Rectangle collisionRecY = GetCollisionRec(newPosY, ei.rect);
         if (oldPos.y < ei.rect.y)
         {
-            p->canJump = true;
-            p->dashRemaining = PLAYER_DASH_DIST;
-            p->rect.y -= collisionRecY.height - p->speed.y * delta;
-            p->falling = false;
+            player.canJump = true;
+            player.dashRemaining = PLAYER_DASH_DIST;
+            player.rect.y -= collisionRecY.height - player.speed.y * delta;
+            player.falling = false;
         }
         else
         {
-            if (p->dashing)
+            if (player.dashing)
             {
-                p->dashRemaining = 0.0f;
+                player.dashRemaining = 0.0f;
             }
-            p->rect.y += collisionRecY.height + p->speed.y * delta;
+            player.rect.y += collisionRecY.height + player.speed.y * delta;
         }
-        p->speed.y = 0;
-        p->dashing = false;
+        player.speed.y = 0;
+        player.dashing = false;
     }
 
     if (collidedX)
     {
-        if (p->rect.y + p->rect.height / 2 >= ei.rect.y)
+        if (player.rect.y + player.rect.height / 2 >= ei.rect.y)
         {
             if (IsKeyDown(KEY_Z))
             {
-                p->climbing = true;
-                p->climbingOn = envIndex;
-                p->speed.y = 0;
-                p->speed.x = 0;
+                player.climbing = true;
+                player.climbingOn = envIndex;
+                player.speed.y = 0;
+                player.speed.x = 0;
             }
             else
             {
-                p->climbing = false;
-                p->climbingOn = -1;
+                player.climbing = false;
+                player.climbingOn = -1;
             }
         }
     }
+
+    return CollisionResult::None;
 }
 
-void UpdatePlayer(Player *player, std::vector<EnvItem>& envItems, float delta)
+void UpdatePlayer(float delta)
 {
-    player->frameCounter++;
+    player.frameCounter++;
 
-    if (player->frameCounter >= (60/8))
+    if (player.frameCounter >= (60/8))
     {
-        player->frameCounter = 0;
-        player->currentFrame++;
+        player.frameCounter = 0;
+        player.currentFrame++;
 
-        if (player->currentFrame > 15) player->currentFrame = 0;
-    }
-
-    if (player->speed.x < 0)
-    {
-        player->facingLeft = true;
-    }
-    else if (player->speed.x > 0)
-    {
-        player->facingLeft = false;
+        if (player.currentFrame > 15) player.currentFrame = 0;
     }
 
-    if (player->canMove && !player->dashing)
+    if (player.speed.x < 0)
     {
-        if (IsKeyDown(KEY_LEFT)) player->speed.x = -200;
-        if (IsKeyDown(KEY_RIGHT)) player->speed.x = 200;
-        if (IsKeyReleased(KEY_LEFT) || IsKeyReleased(KEY_RIGHT)) player->speed.x = 0;
+        player.facingLeft = true;
     }
-    if (IsKeyPressed(KEY_SPACE) && player->canJump)
+    else if (player.speed.x > 0)
     {
-        player->speed.y = -PLAYER_JUMP_SPD;
-        player->canJump = false;
+        player.facingLeft = false;
     }
-    if (IsKeyPressed(KEY_X) && player->dashRemaining > 0.0f)
+
+    if (player.canMove && !player.dashing)
     {
-        player->dashing = true;
+        if (IsKeyDown(KEY_LEFT)) player.speed.x = -200;
+        if (IsKeyDown(KEY_RIGHT)) player.speed.x = 200;
+        if (IsKeyReleased(KEY_LEFT) || IsKeyReleased(KEY_RIGHT)) player.speed.x = 0;
+    }
+    if (IsKeyPressed(KEY_SPACE) && player.canJump)
+    {
+        player.speed.y = -PLAYER_JUMP_SPD;
+        player.canJump = false;
+    }
+    if (IsKeyPressed(KEY_X) && player.dashRemaining > 0.0f)
+    {
+        player.dashing = true;
         if (IsKeyDown(KEY_LEFT) && IsKeyDown(KEY_UP))
         {
-            player->speed.x = -PLAYER_DASH_SPD_DIAG;
-            player->speed.y = -PLAYER_DASH_SPD_DIAG;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
+            player.speed.x = -PLAYER_DASH_SPD_DIAG;
+            player.speed.y = -PLAYER_DASH_SPD_DIAG;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
         }
         else if (IsKeyDown(KEY_RIGHT) && IsKeyDown(KEY_UP))
         {
-            player->speed.x = PLAYER_DASH_SPD_DIAG;
-            player->speed.y = -PLAYER_DASH_SPD_DIAG;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
+            player.speed.x = PLAYER_DASH_SPD_DIAG;
+            player.speed.y = -PLAYER_DASH_SPD_DIAG;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
         }
         else if (IsKeyDown(KEY_RIGHT) && IsKeyDown(KEY_DOWN))
         {
-            player->speed.x = PLAYER_DASH_SPD_DIAG;
-            player->speed.y = PLAYER_DASH_SPD_DIAG;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
+            player.speed.x = PLAYER_DASH_SPD_DIAG;
+            player.speed.y = PLAYER_DASH_SPD_DIAG;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
         }
         else if (IsKeyDown(KEY_LEFT) && IsKeyDown(KEY_DOWN))
         {
-            player->speed.x = -PLAYER_DASH_SPD_DIAG;
-            player->speed.y = PLAYER_DASH_SPD_DIAG;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
+            player.speed.x = -PLAYER_DASH_SPD_DIAG;
+            player.speed.y = PLAYER_DASH_SPD_DIAG;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta * 1.414f;
         }
         else if (IsKeyDown(KEY_LEFT))
         {
-            player->speed.x = -PLAYER_DASH_SPD;
-            player->speed.y = 0;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta;
+            player.speed.x = -PLAYER_DASH_SPD;
+            player.speed.y = 0;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta;
         }
         else if (IsKeyDown(KEY_RIGHT))
         {
-            player->speed.x = PLAYER_DASH_SPD;
-            player->speed.y = 0;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta;
+            player.speed.x = PLAYER_DASH_SPD;
+            player.speed.y = 0;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta;
         }
         else if (IsKeyDown(KEY_UP))
         {
-            player->speed.x = 0;
-            player->speed.y = -PLAYER_DASH_SPD;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta;
+            player.speed.x = 0;
+            player.speed.y = -PLAYER_DASH_SPD;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta;
         }
         else if (IsKeyDown(KEY_DOWN))
         {
-            player->speed.x = 0;
-            player->speed.y = PLAYER_DASH_SPD;
-            player->dashRemaining -= PLAYER_DASH_SPD * delta;
+            player.speed.x = 0;
+            player.speed.y = PLAYER_DASH_SPD;
+            player.dashRemaining -= PLAYER_DASH_SPD * delta;
         }
     }
 
-    if (player->dashing && player->dashRemaining <= 0.0f)
+    if (player.dashing && player.dashRemaining <= 0.0f)
     {
-        player->dashing = false;
-        player->speed.x = 0;
-        player->speed.y = 0;
+        player.dashing = false;
+        player.speed.x = 0;
+        player.speed.y = 0;
     }
 
-    if (player->climbing)
+    if (player.climbing)
     {
-        if (IsKeyDown(KEY_UP) && player->rect.y > envItems[player->climbingOn].rect.y)
+        if (IsKeyDown(KEY_UP) && player.rect.y > envItems[player.climbingOn].rect.y)
         {
-            player->speed.y = -100;
+            player.stamina -= delta * 45.45f;
+            player.speed.y = -100;
         }
         else if (IsKeyDown(KEY_DOWN)
-                 && player->rect.y < envItems[player->climbingOn].rect.y + envItems[player->climbingOn].rect.height - player->rect.height)
+                 && player.rect.y < envItems[player.climbingOn].rect.y + envItems[player.climbingOn].rect.height - player.rect.height)
         {
-            player->speed.y = 100;
+            player.speed.y = 100;
         }
         else
         {
-            player->speed.y = 0;
+            if (player.stamina > 0)
+            {
+                player.stamina -= delta * 10.0f;
+                player.speed.y = 0;
+            }
         }
 
         if (IsKeyPressed(KEY_SPACE))
         {
-            bool isLeft = player->rect.x < envItems[player->climbingOn].rect.x;
-            player->speed.y = -PLAYER_JUMP_SPD;
-            player->speed.x = isLeft ? -200.0f : 200.0f;
-            player->climbing = false;
-            player->climbingOn = -1;
-            player->canMove = false;
-            player->moveTimer = 0.1f;
+            bool isLeft = player.rect.x < envItems[player.climbingOn].rect.x;
+            player.speed.y = -PLAYER_JUMP_SPD;
+            player.speed.x = isLeft ? -200.0f : 200.0f;
+            player.climbing = false;
+            player.climbingOn = -1;
+            player.canMove = false;
+            player.moveTimer = 0.1f;
+            player.stamina -= 27.5f;
         }
     }
 
-    player->canJump = false;
+    player.canJump = false;
     for (int i = 0; i < envItems.size(); i++)
     {
         auto& ei = envItems[i];
-        CollisionFinnaHappen(ei, i, player, delta);
+        CollisionResult collisionResult = CollisionFinnaHappen(ei, i, delta);
+        if (collisionResult == CollisionResult::Death)
+        {
+            OnDeath(player);
+        }
         if (ei.type == EnvItemType::Crystal && ei.Crystal.respawning)
         {
             ei.Crystal.respawnTimer -= delta;
@@ -308,41 +392,162 @@ void UpdatePlayer(Player *player, std::vector<EnvItem>& envItems, float delta)
         }
     }
 
-    if (!player->climbing)
+    if (!player.climbing)
     {
-        player->rect.x += player->speed.x * delta;
+        player.rect.x += player.speed.x * delta;
     }
     else
     {
         if (IsKeyReleased(KEY_Z))
         {
-            player->climbing = false;
-            player->climbingOn = -1;
-            player->speed.y = 0;
-            player->speed.x = 0;
+            player.climbing = false;
+            player.climbingOn = -1;
+            player.speed.y = 0;
+            player.speed.x = 0;
         }
     }
 
-    player->rect.y += player->speed.y * delta;
+    player.rect.y += player.speed.y * delta;
 
-    if (player->dashing)
+    if (player.dashing)
     {
-        player->dashRemaining -= PLAYER_DASH_SPD_DIAG * delta;
+        player.dashRemaining -= PLAYER_DASH_SPD_DIAG * delta;
     }
-    else if (!player->climbing)
+    else if (!player.climbing)
     {
-        player->speed.y += G * delta;
+        player.speed.y += G * delta;
     }
 
-    if (!player->canMove)
+    if (!player.canMove)
     {
-        player->moveTimer -= delta;
-        if (player->moveTimer <= 0.0f)
+        player.moveTimer -= delta;
+        if (player.moveTimer <= 0.0f)
         {
-            player->canMove = true;
+            player.canMove = true;
+        }
+    }
+    std::array<Vector2, 5> newHair = {};
+
+    Vector2 stepPerSegment = { 0, 4 };
+    stepPerSegment.x = player.facingLeft ? 2 : -2;
+
+    int currentHairOffset = player.facingLeft ? -1 : 11;
+    Vector2 currentHairCoords = { player.rect.x + (int)currentHairOffset, player.rect.y - 5 };
+
+    for (int i = 0; i < 5; i++)
+    {
+        if ((player.speed.x == 0 && player.speed.y == 0 && player.currentFrame % 9 < 4)
+            || (player.currentFrame % 12 == 0 || player.currentFrame % 12 == 5 || player.currentFrame % 12 == 10 || player.currentFrame % 12 == 11)
+            )
+        {
+            currentHairCoords.y -= 2;
+        }
+        float offsetRatio = 0.1f * i / 3.0f;
+        player.hair[i] = { currentHairCoords.x + (offsetRatio * 30) + stepPerSegment.x * i, currentHairCoords.y + (offsetRatio * 30) + stepPerSegment.y * i };
+    }
+}
+
+void LoadEditorLevel(Camera2D& camera)
+{
+    envItems.clear();
+    for (auto& [x, row] : levelEditor.items())
+    {
+        for (auto& [y, blockType] : row.items())
+        {
+            if (blockType == 1)
+            {
+                envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Solid, { GRAY } });
+            }
+            else if (blockType == 2)
+            {
+                envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Hazard, { RED } });
+            }
+            else if (blockType == 3)
+            {
+                Vector2 newVec = { std::stof(x) * 15, std::stof(y) * 15 };
+                player.respawnPoint = newVec;
+                player.rect.x = newVec.x;
+                player.rect.y = newVec.y;
+            }
         }
     }
 }
+
+void UpdateLevelCamera(Camera2D& camera)
+{
+    if (IsKeyDown(KEY_LEFT))
+    {
+        camera.target.x -= 1;
+    }
+    else if (IsKeyDown(KEY_RIGHT))
+    {
+        camera.target.x += 1;
+    }
+    else if (IsKeyDown(KEY_UP))
+    {
+        camera.target.y -= 1;
+    }
+    else if (IsKeyDown(KEY_DOWN))
+    {
+        camera.target.y += 1;
+    }
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    {
+        Vector2 mousePos = GetMousePosition();
+        if (CheckCollisionPointRec(mousePos, editorPreviewRectangle))
+        {
+            LoadEditorLevel(camera);
+            gameScene = Game;
+            return;
+        }
+//        Vector2 offsetPos = { mousePos.x + camera.offset.x, mousePos.y + camera.offset.y };
+        float coordX = (int)mousePos.x / 15;
+        float coordY = (int)mousePos.y / 15;
+        Vector2 coords = { coordX, coordY };
+        if (levelEditor.contains(std::to_string(coords.x)))
+        {
+            if (levelEditor[std::to_string(coords.x)].contains(std::to_string(coords.y)))
+            {
+                std::cout << levelEditor << std::endl;
+                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() + 1;
+            }
+            else
+            {
+                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 1;
+            }
+        }
+        else
+        {
+            levelEditor[std::to_string(coords.x)] = {};
+            if (levelEditor[std::to_string(coords.x)].contains(std::to_string(coords.y)))
+            {
+                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() + 1;
+            }
+            else
+            {
+                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 1;
+            }
+        }
+        std::cout << levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() << std::endl;
+        if (levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() > 3)
+        {
+            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 0;
+        }
+        std::cout << levelEditor << std::endl;
+    }
+    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
+    {
+        Vector2 mousePos = GetMousePosition();
+//        Vector2 offsetPos = { mousePos.x + camera.offset.x, mousePos.y + camera.offset.y };
+        float coordX = (int)mousePos.x / 15;
+        float coordY = (int)mousePos.y / 15;
+        Vector2 coords = { coordX, coordY };
+        if (levelEditor.contains(std::to_string(coords.x)))
+        {
+            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 0;
+        }
+    }
+};
 
 int main()
 {
@@ -367,21 +572,21 @@ int main()
 
     InitWindow(screenWidth, screenHeight, "raylib [core] example - mouse input");
 
-    std::array<Texture2D, 12> walkSprites;
+    std::array<Texture2D, 12> walkSprites{};
 
     for (int i = 0; i < walkPaths.size(); i++)
     {
         walkSprites[i] = LoadTexture(walkPaths[i].c_str());
     }
 
-    std::array<Texture2D, 9> idleSprites;
+    std::array<Texture2D, 9> idleSprites{};
 
     for (int i = 0; i < idleSprites.size(); i++)
     {
         idleSprites[i] = LoadTexture((ASSETS_PATH"sprites/player/idle0" + std::to_string(i) + ".png").c_str());
     }
 
-    std::array<Texture2D, 15> climbingSprites;
+    std::array<Texture2D, 15> climbingSprites{};
 
     for (int i = 0; i < climbingSprites.size(); i++)
     {
@@ -395,32 +600,26 @@ int main()
         }
     }
 
-//    const Texture2D rightSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_right00.png");
-//    const Texture2D upSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_up00.png");
-//    const Texture2D leftSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_left00.png");
-//    const Texture2D downSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_down00.png");
+    const Texture2D rightSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_right00.png");
+    const Texture2D upSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_up00.png");
+    const Texture2D leftSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_left00.png");
+    const Texture2D downSpikes = LoadTexture(ASSETS_PATH"sprites/spikes/outline_down00.png");
 
-    Player player = { 0 };
-    player.rect = {0, 300, 40, 40 };
+    const Texture2D hair = LoadTexture(ASSETS_PATH"sprites/player/hair00.png");
+
+    const std::array<const Texture2D*, 4> spikeSprites = { &upSpikes, &rightSpikes, &downSpikes, &leftSpikes };
+
+    player.rect = {0, 0, 40, 40 };
     player.speed.x = 0;
     player.speed.y = 0;
+    player.respawnPoint = { 20, 300 };
     player.canJump = false;
     player.canMove = true;
     player.currentFrame = 0;
     player.frameCounter = 0;
+    player.stamina = 110.0f;
 
-    std::vector<EnvItem> envItems = {
-       {{ 290, 440, 20, 20 }, EnvItemType::Crystal },
-       {{ 0, 0, 1000, 400 }, EnvItemType::Nonsolid, { LIGHTGRAY } },
-       {{ 0, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
-       {{ 400, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
-       {{ 800, 400, 200, 200 }, EnvItemType::Solid, { GRAY } },
-       {{ 250, 300, 100, 10 }, EnvItemType::Solid, { GRAY } },
-       {{ 650, 300, 100, 10 }, EnvItemType::Hazard, { RED } },
-       {{ 200, 580, 200, 20 }, EnvItemType::Hazard, { RED } },
-       {{ 600, 580, 200, 20 }, EnvItemType::Hazard, { RED } },
-       {{ -1000, 1000, 3000, 20 }, EnvItemType::Hazard, { RED } }
-    };
+    envItems[6].Hazard.direction = Direction::Down;
 
     Camera2D camera = { 0 };
     camera.target = { player.rect.x, player.rect.y };
@@ -438,9 +637,16 @@ int main()
         //----------------------------------------------------------------------------------
         float deltaTime = GetFrameTime();
 
-        UpdatePlayer(&player, envItems, deltaTime);
+        if (gameScene == Game)
+        {
+            UpdatePlayer(deltaTime);
+            camera.target = { player.rect.x, player.rect.y };
+        }
+        else
+        {
+            UpdateLevelCamera(camera);
+        }
         camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
-        camera.target = { player.rect.x, player.rect.y };
 
         //----------------------------------------------------------------------------------
 
@@ -452,49 +658,95 @@ int main()
 
         BeginMode2D(camera);
 
-        for (auto ei : envItems) {
-            switch (ei.type)
-            {
-                case EnvItemType::Crystal:
-                    DrawRectangleRec(ei.rect, ei.Crystal.respawning ? LIME : GREEN);
-                    break;
-                case EnvItemType::Nonsolid:
-                    DrawRectangleRec(ei.rect, ei.Nonsolid.color);
-                    break;
-                case EnvItemType::Solid:
-                    DrawRectangleRec(ei.rect, ei.Solid.color);
-                    break;
-                case EnvItemType::Hazard:
-                    DrawRectangleRec(ei.rect, ei.Hazard.color);
-                    break;
+        if (gameScene == Game)
+        {
+            for (auto ei : envItems) {
+                switch (ei.type)
+                {
+                    case EnvItemType::Crystal:
+                        DrawRectangleRec(ei.rect, ei.Crystal.respawning ? LIME : GREEN);
+                        break;
+                    case EnvItemType::Nonsolid:
+                        DrawRectangleRec(ei.rect, ei.Nonsolid.color);
+                        break;
+                    case EnvItemType::Solid:
+                        DrawRectangleRec(ei.rect, ei.Solid.color);
+                        break;
+                    case EnvItemType::Hazard:
+                        DrawTextureQuad(*spikeSprites[ei.Hazard.direction], { ei.rect.width / 20, 1 }, { 0, 0 }, ei.rect, WHITE);
+                        break;
+                }
             }
-        }
 
-        Rectangle playerRect = { player.rect.x, player.rect.y, 40, 40 };
+            Rectangle playerRect = { player.rect.x, player.rect.y, 40, 40 };
 
-        Color playerColor;
+            Color playerColor;
 
-        if (player.dashing) playerColor = ORANGE;
-        else if (player.dashRemaining <= 0) playerColor = BLUE;
-        else playerColor = RED;
+            if (player.dashing) playerColor = ORANGE;
+            else if (player.dashRemaining <= 0) playerColor = BLUE;
+            else playerColor = RED;
 
-//        DrawRectangleRec(playerRect, playerColor);
-        if (player.speed.x != 0)
-        {
-            DrawTexturePro(walkSprites[player.currentFrame % 11], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
-        }
-        else if (player.climbing)
-        {
-            DrawTexturePro(climbingSprites[player.currentFrame % 14], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
+            for (int i = 0; i < player.hair.size(); i++)
+            {
+                const Vector2 hairCoord = player.hair[i];
+                DrawTextureEx(hair, hairCoord, 0, 3.0f - (i * 0.2f), player.dashRemaining < 100.0f ? HAIR_COLOR_DASHING : HAIR_COLOR_NORMAL);
+            }
+
+            //        DrawRectangleRec(playerRect, playerColor);
+            if (player.speed.x != 0)
+            {
+                DrawTexturePro(walkSprites[player.currentFrame % 11], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
+            }
+            else if (player.climbing)
+            {
+                DrawTexturePro(climbingSprites[player.currentFrame % 14], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
+            }
+            else
+            {
+                DrawTexturePro(idleSprites[player.currentFrame % 9], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
+            }
         }
         else
         {
-            DrawTexturePro(idleSprites[player.currentFrame % 9], { 7, 18, 14.0f * (player.facingLeft ? -1.0f : 1.0f), 14 }, playerRect, { 0, 0 }, 0, WHITE);
-        }
+            int boxHeight = 15;
+            for (int i = 0; i <= SCREEN_HEIGHT / boxHeight; i++)
+            {
+                DrawLine(-SCREEN_WIDTH / 2, -SCREEN_HEIGHT / 2 + i * boxHeight, SCREEN_WIDTH / 2, -SCREEN_HEIGHT / 2 + i * boxHeight, BLACK);
+            }
+            int boxWidth = 15;
+            for (int i = 0; i <= SCREEN_WIDTH / boxWidth; i++)
+            {
+                DrawLine(-SCREEN_WIDTH / 2 + i * boxWidth, -SCREEN_HEIGHT / 2, -SCREEN_WIDTH / 2 + i * boxWidth, SCREEN_HEIGHT / 2, BLACK);
+            }
 
+            for (auto& [x, row] : levelEditor.items())
+            {
+                for (auto& [y, blockType] : row.items())
+                {
+                    Rectangle boxRect = { std::stof(x) * boxWidth - camera.offset.x, std::stof(y) * boxHeight - camera.offset.y, static_cast<float>(boxWidth), static_cast<float>(boxHeight) };
+                    if (blockType == 1)
+                    {
+                        DrawRectangleRec(boxRect, GRAY);
+                    }
+                    else if (blockType == 2)
+                    {
+                        DrawRectangleRec(boxRect, RED);
+                    }
+                    else if (blockType == 3)
+                    {
+                        DrawRectangleRec(boxRect, GREEN);
+                    }
+                }
+            }
+        }
         EndMode2D();
 
-        DrawText(TextFormat("Climbing: %i", player.climbing), 20, 20, 10, DARKGRAY);
+        if (gameScene == LevelEditor)
+        {
+            DrawRectangleRec(editorPreviewRectangle, RED);
+        }
+
+        DrawText(TextFormat("Climbing: %f", player.dashRemaining), 20, 20, 10, DARKGRAY);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
