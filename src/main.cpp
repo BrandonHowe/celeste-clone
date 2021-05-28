@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include "main.hpp"
 
 // for convenience
 using json = nlohmann::json;
@@ -15,69 +16,17 @@ json levelEditor;
 constexpr auto SCREEN_WIDTH  = 800;
 constexpr auto SCREEN_HEIGHT = 450;
 
-#define G 1000
-#define PLAYER_JUMP_SPD 350.0f
-#define PLAYER_HOR_SPD 200.0f
-#define PLAYER_DASH_SPD 666.6f
-#define PLAYER_DASH_SPD_DIAG 353.5f
-#define PLAYER_DASH_DIST 100.0f
+constexpr int G = 1000;
+constexpr float PLAYER_JUMP_SPD = 350.0f;
+constexpr float PLAYER_HOR_SPD = 200.0f;
+constexpr float PLAYER_DASH_SPD = 666.6f;
+constexpr float PLAYER_DASH_SPD_DIAG = 353.5f;
+constexpr float PLAYER_DASH_DIST = 100.0f;
 
-#define HAIR_COLOR_NORMAL ColorFromHSV({ 0, 0.7093, 0.6745 })
-#define HAIR_COLOR_DASHING ColorFromHSV({ 203.11200, 0.7333, 1.0000 })
-
-enum Scene
-{
-    Game,
-    LevelEditor,
-    LevelSelect
-};
+const auto HAIR_COLOR_NORMAL = ColorFromHSV({ 0, 0.7093, 0.6745 });
+const auto HAIR_COLOR_DASHING = ColorFromHSV({ 203.11200, 0.7333, 1.0000 });
 
 Scene gameScene = LevelSelect;
-
-enum EnvItemType {
-    Nonsolid,
-    Solid,
-    Hazard,
-    Crystal
-};
-
-enum Direction
-{
-    Up,
-    Right,
-    Down,
-    Left
-};
-
-struct EnvItem {
-    Rectangle rect;
-    EnvItemType type;
-
-    union
-    {
-        struct
-        {
-            Color color;
-        } Nonsolid;
-
-        struct
-        {
-            Color color;
-        } Solid;
-
-        struct
-        {
-            Color color;
-            Direction direction;
-        } Hazard;
-
-        struct
-        {
-            bool respawning;
-            float respawnTimer;
-        } Crystal;
-    };
-};
 
 std::ostream& operator<<(std::ostream& stream, const Vector2& vec)
 {
@@ -97,30 +46,14 @@ std::ostream& operator<<(std::ostream& stream, const EnvItem& ei)
     return stream;
 }
 
-typedef struct Player {
-    Rectangle rect;
-    Vector2 speed;
-    Vector2 momentum;
-    Vector2 respawnPoint;
-    bool canMove;
-    float moveTimer;
-    bool canJump;
-    bool dashing;
-    bool climbing;
-    int climbingOn;
-    float dashRemaining;
-    int currentFrame;
-    int frameCounter;
-    bool facingLeft;
-    bool falling;
-    float stamina;
-    std::array<Vector2, 5> hair;
-} Player;
-
 Player player = { 0 };
 
 Rectangle editorPreviewRectangle = {10, 10, 100, 30 };
 Rectangle editorLevelnameRectangle = { SCREEN_WIDTH - 110, 10, 100, 30 };
+
+Vector2 editorLastSelectedSquare;
+int editorCurrentTileType = 1;
+std::string editorLevelChain;
 
 std::vector<EnvItem> envItems = {
     {{ 290, 440, 20, 20 }, EnvItemType::Crystal },
@@ -137,14 +70,50 @@ std::vector<EnvItem> envItems = {
 
 std::vector<char> levelName;
 
+class Button
+{
+private:
+    Rectangle b_rect;
+    Color b_color;
+
+public:
+    Button(Rectangle rect, Color color)
+    {
+        b_rect = rect;
+        b_color = color;
+    }
+
+    bool isDown() const
+    {
+        return IsMouseButtonDown(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), b_rect);
+    }
+
+    bool isPressed() const
+    {
+        return IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), b_rect);
+    }
+
+    void render() const
+    {
+        DrawRectangleRec(b_rect, b_color);
+    }
+};
+
+std::vector<Button> editorButtons = {
+   { { 300, 10, 30, 30 }, BLACK },
+   { { 330, 10, 30, 30 }, RED },
+   { { 360, 10, 30, 30 }, LIME },
+   { { 390, 10, 30, 30 }, BLUE }
+};
+
 void OnDeath(Player& p)
 {
     for (auto& ei : envItems)
     {
         if (ei.type == EnvItemType::Crystal)
         {
-            ei.Crystal.respawning = false;
-            ei.Crystal.respawnTimer = 0.0f;
+            ei.respawning = false;
+            ei.respawnTimer = 0.0f;
         }
     }
     p.rect.x = p.respawnPoint.x;
@@ -152,13 +121,6 @@ void OnDeath(Player& p)
     p.speed.x = 0;
     p.speed.y = 0;
 }
-
-enum CollisionResult
-{
-    None,
-    DashRecharge,
-    Death
-};
 
 CollisionResult CollisionFinnaHappen(EnvItem& ei, int envIndex, float delta)
 {
@@ -173,21 +135,28 @@ CollisionResult CollisionFinnaHappen(EnvItem& ei, int envIndex, float delta)
     bool collidedX = CheckCollisionRecs(newPosX, ei.rect);
     bool collidedY = CheckCollisionRecs(newPosY, ei.rect);
 
-    if ((collidedX || collidedY) && ei.type == EnvItemType::Crystal)
+    if (collidedX || collidedY)
     {
-        if (!ei.Crystal.respawning)
+        switch (ei.type)
         {
-            ei.Crystal.respawning = true;
-            ei.Crystal.respawnTimer = 5.0f;
-            player.dashRemaining = PLAYER_DASH_DIST;
+            case EnvItemType::Crystal:
+            {
+                if (!ei.respawning)
+                {
+                    ei.respawning = true;
+                    ei.respawnTimer = 5.0f;
+                    player.dashRemaining = PLAYER_DASH_DIST;
+                }
+
+                return CollisionResult::DashRecharge;
+            }
+            case EnvItemType::Hazard:
+            {
+                return CollisionResult::Death;
+            }
+            case SwitchLevel:
+                return CollisionResult::SwitchLevel;
         }
-
-        return CollisionResult::DashRecharge;
-    }
-
-    if ((collidedX || collidedY) && ei.type == EnvItemType::Hazard)
-    {
-        return CollisionResult::Death;
     }
 
     if (collidedX)
@@ -391,16 +360,21 @@ void UpdatePlayer(float delta)
     {
         auto& ei = envItems[i];
         CollisionResult collisionResult = CollisionFinnaHappen(ei, i, delta);
-        if (collisionResult == CollisionResult::Death)
+        switch (collisionResult)
         {
-            OnDeath(player);
+            case CollisionResult::Death:
+                OnDeath(player);
+                break;
+            case CollisionResult::SwitchLevel:
+                LoadLevelFile(ei.levelName);
+                break;
         }
-        if (ei.type == EnvItemType::Crystal && ei.Crystal.respawning)
+        if (ei.type == EnvItemType::Crystal && ei.respawning)
         {
-            ei.Crystal.respawnTimer -= delta;
-            if (ei.Crystal.respawnTimer <= 0.0f)
+            ei.respawnTimer -= delta;
+            if (ei.respawnTimer <= 0.0f)
             {
-                ei.Crystal.respawning = false;
+                ei.respawning = false;
             }
         }
     }
@@ -460,6 +434,7 @@ void UpdatePlayer(float delta)
     }
 }
 
+// Load the file currently in the editor
 void LoadEditorLevel(Camera2D& camera)
 {
     envItems.clear();
@@ -482,6 +457,14 @@ void LoadEditorLevel(Camera2D& camera)
                 player.rect.x = newVec.x;
                 player.rect.y = newVec.y;
             }
+            else if (blockType == 4)
+            {
+                EnvItem switchItem;
+                switchItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
+                switchItem.type = EnvItemType::SwitchLevel;
+                switchItem.levelName = editorLevelChain;
+                envItems.push_back(switchItem);
+            }
         }
     }
 
@@ -498,6 +481,7 @@ void LoadEditorLevel(Camera2D& camera)
     levelFile.close();
 }
 
+// Load a level based on a file
 void LoadLevelFile(const std::string& file)
 {
     std::cout << "Loading " << file << ".txt" << std::endl;
@@ -505,15 +489,15 @@ void LoadLevelFile(const std::string& file)
     std::string fileContent;
     std::getline(std::ifstream(SAVES_PATH + file + ".txt"), fileContent, '\0');
 
-    std::cout << fileContent << std::endl;
-
     levelEditor = json::parse(fileContent);
 
     envItems.clear();
     for (auto& [x, row] : levelEditor.items())
     {
-        for (auto& [y, blockType] : row.items())
+        for (auto& [y, blockData] : row.items())
         {
+            bool oldFileFormat = blockData.is_number();
+            int blockType = oldFileFormat ? blockData.get<int>() : blockData["type"].get<int>();
             if (blockType == 1)
             {
                 envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Solid, { GRAY } });
@@ -529,8 +513,19 @@ void LoadLevelFile(const std::string& file)
                 player.rect.x = newVec.x;
                 player.rect.y = newVec.y;
             }
+            else if (blockType == 4)
+            {
+                EnvItem switchItem;
+                switchItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
+                switchItem.type = EnvItemType::SwitchLevel;
+                switchItem.levelName = blockData["switchName"].get<std::string>();
+                envItems.push_back(switchItem);
+            }
         }
     }
+
+    player.speed.x = 0;
+    player.speed.y = 0;
 
     gameScene = Game;
 }
@@ -555,49 +550,85 @@ void UpdateLevelCamera(Camera2D& camera)
     }
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
     {
-        Vector2 mousePos = GetMousePosition();
-        if (CheckCollisionPointRec(mousePos, editorPreviewRectangle))
+        int buttonIdx = 1;
+        for (const auto& button : editorButtons)
         {
-            LoadEditorLevel(camera);
-            gameScene = Game;
+            if (button.isPressed())
+            {
+                if (buttonIdx == 4)
+                {
+                    gameScene = LevelSelectEditor;
+                }
+                else
+                {
+                    editorCurrentTileType = buttonIdx;
+                    break;
+                }
+            }
+            buttonIdx++;
+        }
+    }
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), editorPreviewRectangle))
+    {
+        if (levelName.empty())
+        {
+            gameScene = LevelSelect;
             return;
         }
+        LoadEditorLevel(camera);
+        gameScene = Game;
+        return;
+    }
+    else if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+    {
+        Vector2 mousePos = GetMousePosition();
 //        Vector2 offsetPos = { mousePos.x + camera.offset.x, mousePos.y + camera.offset.y };
         float coordX = (int)mousePos.x / 15;
         float coordY = (int)mousePos.y / 15;
         Vector2 coords = { coordX, coordY };
+        std::cout << coords << editorLastSelectedSquare << std::endl;
+        if (coords.x == editorLastSelectedSquare.x && coords.y == editorLastSelectedSquare.y)
+        {
+            return;
+        }
+        else
+        {
+            editorLastSelectedSquare = coords;
+        }
+        std::cout << editorCurrentTileType << std::endl;
+        EnvItemJson newItem;
+        switch (editorCurrentTileType)
+        {
+            case 1:
+                newItem.type = Solid;
+                break;
+            case 2:
+                newItem.type = Hazard;
+                break;
+            case 3:
+                newItem.type = RespawnPoint;
+                break;
+            case 4:
+                newItem.type = SwitchLevel;
+                newItem.switchName = editorLevelChain;
+                break;
+            default:
+                break;
+        }
+        json newItemJson;
+        newItemJson["type"] = newItem.type;
+        newItemJson["switchName"] = editorLevelChain;
         if (levelEditor.contains(std::to_string(coords.x)))
         {
-            if (levelEditor[std::to_string(coords.x)].contains(std::to_string(coords.y)))
-            {
-                std::cout << levelEditor << std::endl;
-                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() + 1;
-            }
-            else
-            {
-                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 1;
-            }
+            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = newItemJson;
         }
         else
         {
             levelEditor[std::to_string(coords.x)] = {};
-            if (levelEditor[std::to_string(coords.x)].contains(std::to_string(coords.y)))
-            {
-                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() + 1;
-            }
-            else
-            {
-                levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 1;
-            }
+            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = newItemJson;
         }
-        std::cout << levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() << std::endl;
-        if (levelEditor[std::to_string(coords.x)][std::to_string(coords.y)].get<int>() > 3)
-        {
-            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 0;
-        }
-        std::cout << levelEditor << std::endl;
     }
-    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
+    if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON))
     {
         Vector2 mousePos = GetMousePosition();
 //        Vector2 offsetPos = { mousePos.x + camera.offset.x, mousePos.y + camera.offset.y };
@@ -606,19 +637,18 @@ void UpdateLevelCamera(Camera2D& camera)
         Vector2 coords = { coordX, coordY };
         if (levelEditor.contains(std::to_string(coords.x)))
         {
-            levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = 0;
+            levelEditor[std::to_string(coords.x)].erase(std::to_string(coords.y));
         }
     }
 };
 
-void UpdateLevelSelect (const std::filesystem::directory_iterator& saves)
+std::string UpdateLevelSelect()
 {
     std::vector<Rectangle> rects;
 
     float row = 0.0f;
-    for (const auto& save : saves)
+    for (const auto& save : std::filesystem::directory_iterator(SAVES_PATH))
     {
-        std::cout << save.path().stem() << std::endl;
         rects.push_back({ 10, 10 + (++row * 50), 100, 30 });
     }
 
@@ -627,21 +657,51 @@ void UpdateLevelSelect (const std::filesystem::directory_iterator& saves)
     {
         if (CheckCollisionPointRec(mousePos, { 10, 10, 100, 30 }))
         {
+            levelEditor.clear();
             gameScene = LevelEditor;
         }
 
         int saveNum = 0;
-        for (const auto& save : saves)
+        for (const auto& save : std::filesystem::directory_iterator(SAVES_PATH))
         {
-            std::cout << rects[saveNum] << std::endl;
             if (CheckCollisionPointRec(mousePos, rects[saveNum]))
             {
-                LoadLevelFile(save.path().stem().string());
+                return save.path().stem().string();
             }
             saveNum++;
         }
     }
+
+    return "";
 };
+
+std::string UpdateLevelSelectEditor()
+{
+    std::vector<Rectangle> rects;
+
+    float row = 0.0f;
+    for (const auto& save : std::filesystem::directory_iterator(SAVES_PATH))
+    {
+        rects.push_back({ 10, 10 + (row++ * 50), 100, 30 });
+    }
+
+    Vector2 mousePos = GetMousePosition();
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    {
+        int saveNum = 0;
+        for (const auto& save : std::filesystem::directory_iterator(SAVES_PATH))
+        {
+            if (CheckCollisionPointRec(mousePos, rects[saveNum]))
+            {
+                return save.path().stem().string();
+            }
+            saveNum++;
+        }
+    }
+
+    return "";
+};
+
 
 int main()
 {
@@ -703,13 +763,6 @@ int main()
 
     const std::array<const Texture2D*, 4> spikeSprites = { &upSpikes, &rightSpikes, &downSpikes, &leftSpikes };
 
-    const std::filesystem::directory_iterator saves = std::filesystem::directory_iterator(SAVES_PATH);
-
-    for (const auto& save : saves)
-    {
-        std::cout << save.path().stem() << std::endl;
-    }
-
     player.rect = {0, 0, 40, 40 };
     player.speed.x = 0;
     player.speed.y = 0;
@@ -739,22 +792,34 @@ int main()
         if (gameScene == Game)
         {
             UpdatePlayer(deltaTime);
-            camera.target = { player.rect.x, player.rect.y };
+            camera.offset = { 0.0f, 0.0f };
         }
         else if (gameScene == LevelEditor)
         {
             UpdateLevelCamera(camera);
+            camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
         }
         else if (gameScene == LevelSelect)
         {
-            for (const auto& save : saves)
+            auto loadFile = UpdateLevelSelect();
+            if (loadFile != std::string(""))
             {
-                std::cout << save.path().stem() << std::endl;
+                LoadLevelFile(loadFile);
             }
-            std::cout << "end" << std::endl;
-            UpdateLevelSelect(saves);
+            camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
         }
-        camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+        else if (gameScene == LevelSelectEditor)
+        {
+            auto loadFile = UpdateLevelSelectEditor();
+            if (loadFile != std::string(""))
+            {
+                editorLevelChain = loadFile;
+                gameScene = LevelEditor;
+
+                editorCurrentTileType = 4;
+            }
+            camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+        }
 
         //----------------------------------------------------------------------------------
 
@@ -772,16 +837,16 @@ int main()
                 switch (ei.type)
                 {
                     case EnvItemType::Crystal:
-                        DrawRectangleRec(ei.rect, ei.Crystal.respawning ? LIME : GREEN);
+                        DrawRectangleRec(ei.rect, ei.respawning ? LIME : GREEN);
                         break;
                     case EnvItemType::Nonsolid:
-                        DrawRectangleRec(ei.rect, ei.Nonsolid.color);
+                        DrawRectangleRec(ei.rect, ei.color);
                         break;
                     case EnvItemType::Solid:
-                        DrawRectangleRec(ei.rect, ei.Solid.color);
+                        DrawRectangleRec(ei.rect, ei.color);
                         break;
                     case EnvItemType::Hazard:
-                        DrawTextureQuad(*spikeSprites[ei.Hazard.direction], { ei.rect.width / 20, 1 }, { 0, 0 }, ei.rect, WHITE);
+                        DrawTextureQuad(*spikeSprites[ei.direction], { ei.rect.width / 20, 1 }, { 0, 0 }, ei.rect, WHITE);
                         break;
                 }
             }
@@ -831,8 +896,14 @@ int main()
 
             for (auto& [x, row] : levelEditor.items())
             {
-                for (auto& [y, blockType] : row.items())
+                for (auto& [y, blockData] : row.items())
                 {
+//                    std::cout << blockType << std::endl;
+                    int blockType = blockData["type"];
+                    if (blockType == 4)
+                    {
+                        std::cout << blockData << std::endl;
+                    }
                     Rectangle boxRect = { std::stof(x) * boxWidth, std::stof(y) * boxHeight, static_cast<float>(boxWidth), static_cast<float>(boxHeight) };
                     if (blockType == 1)
                     {
@@ -846,11 +917,20 @@ int main()
                     {
                         DrawRectangleRec(boxRect, GREEN);
                     }
+                    else if (blockType == 4)
+                    {
+                        DrawRectangleRec(boxRect, BLUE);
+                    }
                 }
             }
 
             DrawRectangleRec(editorPreviewRectangle, RED);
             DrawRectangleRec(editorLevelnameRectangle, LIME);
+
+            for (const auto& button : editorButtons)
+            {
+                button.render();
+            }
 
             if (CheckCollisionPointRec(GetMousePosition(), editorLevelnameRectangle))
             {
@@ -892,6 +972,17 @@ int main()
             DrawText("Level editor", 10, 10, 24, BLACK);
             std::string path = SAVES_PATH;
             float row = 1.0f;
+            for (const auto& entry : std::filesystem::directory_iterator(path))
+            {
+                DrawRectangleRec({ 10, 10 + (row * 50), 100, 30 }, RED);
+                DrawText(entry.path().stem().string().c_str(), 10, 10 + row * 50, 24, BLACK);
+                row++;
+            }
+        }
+        else if (gameScene == LevelSelectEditor)
+        {
+            std::string path = SAVES_PATH;
+            float row = 0.0f;
             for (const auto& entry : std::filesystem::directory_iterator(path))
             {
                 DrawRectangleRec({ 10, 10 + (row * 50), 100, 30 }, RED);
