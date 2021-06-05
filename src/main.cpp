@@ -7,6 +7,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "main.hpp"
+#include <math.h>
 
 // for convenience
 using json = nlohmann::json;
@@ -21,7 +22,7 @@ constexpr float PLAYER_JUMP_SPD = 350.0f;
 constexpr float PLAYER_HOR_SPD = 200.0f;
 constexpr float PLAYER_DASH_SPD = 666.6f;
 constexpr float PLAYER_DASH_SPD_DIAG = 353.5f;
-constexpr float PLAYER_DASH_DIST = 100.0f;
+constexpr float PLAYER_DASH_DIST = 75.0f;
 
 const auto HAIR_COLOR_NORMAL = ColorFromHSV({ 0, 0.7093, 0.6745 });
 const auto HAIR_COLOR_DASHING = ColorFromHSV({ 203.11200, 0.7333, 1.0000 });
@@ -46,6 +47,110 @@ std::ostream& operator<<(std::ostream& stream, const EnvItem& ei)
     return stream;
 }
 
+Orientation& operator++(Orientation& orientation)
+{
+    switch (orientation)
+    {
+        case Orientation::Top: return orientation = Orientation::Bottom;
+        case Orientation::Bottom: return orientation = Orientation::Left;
+        case Orientation::Left: return orientation = Orientation::Right;
+        case Orientation::Right: return orientation = Orientation::HorizMiddle;
+        case Orientation::HorizMiddle: return orientation = Orientation::VertMiddle;
+        case Orientation::VertMiddle: return orientation = Orientation::VertTop;
+        case Orientation::VertTop: return orientation = Orientation::VertBottom;
+        case Orientation::VertBottom: return orientation = Orientation::HorizLeft;
+        case Orientation::HorizLeft: return orientation = Orientation::HorizRight;
+        case Orientation::HorizRight: return orientation = Orientation::Block;
+        case Orientation::Block: return orientation = Orientation::TopLeft;
+        case Orientation::TopLeft: return orientation = Orientation::TopRight;
+        case Orientation::TopRight: return orientation = Orientation::BottomLeft;
+        case Orientation::BottomLeft: return orientation = Orientation::BottomRight;
+        case Orientation::BottomRight: return orientation = Orientation::IGBR;
+        case Orientation::IGBR: return orientation = Orientation::IGUR;
+        case Orientation::IGUR: return orientation = Orientation::IGBL;
+        case Orientation::IGBL: return orientation = Orientation::IGUL;
+        case Orientation::IGUL: return orientation = Orientation::IGRight;
+        case Orientation::IGRight: return orientation = Orientation::IGTop;
+        case Orientation::IGTop: return orientation = Orientation::IGLeft;
+        case Orientation::IGLeft: return orientation = Orientation::IGBottom;
+        case Orientation::IGBottom: return orientation = Orientation::IGSBL;
+        case Orientation::IGSBL: return orientation = Orientation::IGSBR;
+        case Orientation::IGSBR: return orientation = Orientation::IGSUR;
+        case Orientation::IGSUR: return orientation = Orientation::IGSUL;
+        case Orientation::IGSUL: return orientation = Orientation::IGCircle;
+        case Orientation::IGCircle: return orientation = Orientation::IGDiagDR;
+        case Orientation::IGDiagDR: return orientation = Orientation::IGDiagUR;
+        case Orientation::IGDiagUR: return orientation = Orientation::Inground1;
+        case Orientation::Inground1: return orientation = Orientation::Inground2;
+        case Orientation::Inground2: return orientation = Orientation::Inground3;
+        case Orientation::Inground3: return orientation = Orientation::Inground4;
+        case Orientation::Inground4: return orientation = Orientation::Inground5;
+        case Orientation::Inground5: return orientation = Orientation::Inground6;
+        case Orientation::Inground6: return orientation = Orientation::Inground7;
+        case Orientation::Inground7: return orientation = Orientation::Inground8;
+        case Orientation::Inground8: return orientation = Orientation::Inground9;
+        case Orientation::Inground9: return orientation = Orientation::Inground10;
+        case Orientation::Inground10: return orientation = Orientation::Inground11;
+        case Orientation::Inground11: return orientation = Orientation::Inground12;
+        case Orientation::Inground12: return orientation = Orientation::Inground13;
+        case Orientation::Inground13: return orientation = Orientation::Inground14;
+        case Orientation::Inground14: return orientation = Orientation::Inground15;
+        case Orientation::Inground15: return orientation = Orientation::Top;
+    }
+}
+
+Orientation& operator--(Orientation& orientation)
+{
+    switch (orientation)
+    {
+        case Orientation::Top: return orientation = Orientation::Inground15;
+        case Orientation::Bottom: return orientation = Orientation::Top;
+        case Orientation::Left: return orientation = Orientation::Bottom;
+        case Orientation::Right: return orientation = Orientation::Left;
+        case Orientation::HorizMiddle: return orientation = Orientation::Right;
+        case Orientation::VertMiddle: return orientation = Orientation::HorizMiddle;
+        case Orientation::VertTop: return orientation = Orientation::VertMiddle;
+        case Orientation::VertBottom: return orientation = Orientation::VertTop;
+        case Orientation::HorizLeft: return orientation = Orientation::VertBottom;
+        case Orientation::HorizRight: return orientation = Orientation::HorizLeft;
+        case Orientation::Block: return orientation = Orientation::HorizRight;
+        case Orientation::TopLeft: return orientation = Orientation::Block;
+        case Orientation::TopRight: return orientation = Orientation::TopLeft;
+        case Orientation::BottomLeft: return orientation = Orientation::TopRight;
+        case Orientation::BottomRight: return orientation = Orientation::BottomLeft;
+        case Orientation::IGBR: return orientation = Orientation::BottomRight;
+        case Orientation::IGUR: return orientation = Orientation::IGBR;
+        case Orientation::IGBL: return orientation = Orientation::IGUR;
+        case Orientation::IGUL: return orientation = Orientation::IGBL;
+        case Orientation::IGRight: return orientation = Orientation::IGUL;
+        case Orientation::IGTop: return orientation = Orientation::IGRight;
+        case Orientation::IGLeft: return orientation = Orientation::IGTop;
+        case Orientation::IGBottom: return orientation = Orientation::IGLeft;
+        case Orientation::IGSBL: return orientation = Orientation::IGBottom;
+        case Orientation::IGSBR: return orientation = Orientation::IGSBL;
+        case Orientation::IGSUR: return orientation = Orientation::IGSBR;
+        case Orientation::IGSUL: return orientation = Orientation::IGSUR;
+        case Orientation::IGCircle: return orientation = Orientation::IGSUL;
+        case Orientation::IGDiagDR: return orientation = Orientation::IGCircle;
+        case Orientation::IGDiagUR: return orientation = Orientation::IGDiagDR;
+        case Orientation::Inground1:  return orientation = Orientation::IGDiagUR;
+        case Orientation::Inground2:  return orientation = Orientation::Inground1;
+        case Orientation::Inground3:  return orientation = Orientation::Inground2;
+        case Orientation::Inground4:  return orientation = Orientation::Inground3;
+        case Orientation::Inground5:  return orientation = Orientation::Inground4;
+        case Orientation::Inground6:  return orientation = Orientation::Inground5;
+        case Orientation::Inground7:  return orientation = Orientation::Inground6;
+        case Orientation::Inground8:  return orientation = Orientation::Inground7;
+        case Orientation::Inground9:  return orientation = Orientation::Inground8;
+        case Orientation::Inground10: return orientation = Orientation::Inground9;
+        case Orientation::Inground11: return orientation = Orientation::Inground10;
+        case Orientation::Inground12: return orientation = Orientation::Inground11;
+        case Orientation::Inground13: return orientation = Orientation::Inground12;
+        case Orientation::Inground14: return orientation = Orientation::Inground13;
+        case Orientation::Inground15: return orientation = Orientation::Inground14;
+    }
+}
+
 Player player = { 0 };
 
 Rectangle editorPreviewRectangle = {10, 10, 100, 30 };
@@ -53,6 +158,7 @@ Rectangle editorLevelnameRectangle = { SCREEN_WIDTH - 110, 10, 100, 30 };
 
 Vector2 editorLastSelectedSquare;
 int editorCurrentTileType = 1;
+Orientation editorCurrentOrientation = Orientation::Top;
 std::string editorLevelChain;
 
 std::vector<EnvItem> envItems = {
@@ -103,7 +209,88 @@ std::vector<Button> editorButtons = {
    { { 300, 10, 30, 30 }, BLACK },
    { { 330, 10, 30, 30 }, RED },
    { { 360, 10, 30, 30 }, LIME },
-   { { 390, 10, 30, 30 }, BLUE }
+   { { 390, 10, 30, 30 }, BLUE },
+   { { 420, 10, 30, 30 }, YELLOW },
+   { { 450, 10, 30, 30 }, ORANGE }
+};
+
+class Tileset
+{
+private:
+    Image t_rawImg{};
+    std::vector<Texture2D> t_imgs{};
+public:
+    Tileset(const std::string& tilesetName)
+    {
+        t_rawImg = LoadImage((ASSETS_PATH"tilesets/" + tilesetName + ".png").c_str());
+        for (int i = 0; i < 15; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                t_imgs.push_back(LoadTextureFromImage(ImageFromImage(t_rawImg, { static_cast<float>(8 * j), static_cast<float>(8 * i), 8, 8 })));
+            }
+        }
+        for (int i = 0; i < 15; i++)
+        {
+            t_imgs.push_back(LoadTextureFromImage(ImageFromImage(t_rawImg, { 32, static_cast<float>(8 * i), 8, 8 })));
+        }
+        for (int i = 0; i < 15; i++)
+        {
+            t_imgs.push_back(LoadTextureFromImage(ImageFromImage(t_rawImg, { 40, static_cast<float>(8 * i), 8, 8 })));
+        }
+        std::cout << t_imgs.size() << std::endl;
+    }
+    Texture2D get(const Orientation& orientation, int variant)
+    {
+        switch (orientation)
+        {
+            case Orientation::Top:          return t_imgs[0 + variant];
+            case Orientation::Bottom:       return t_imgs[4 + variant];
+            case Orientation::Left:         return t_imgs[8 + variant];
+            case Orientation::Right:        return t_imgs[12 + variant];
+            case Orientation::HorizMiddle:  return t_imgs[16 + variant];
+            case Orientation::VertMiddle:   return t_imgs[20 + variant];
+            case Orientation::VertTop:      return t_imgs[24 + variant];
+            case Orientation::VertBottom:   return t_imgs[28 + variant];
+            case Orientation::HorizLeft:    return t_imgs[32 + variant];
+            case Orientation::HorizRight:   return t_imgs[36 + variant];
+            case Orientation::Block:        return t_imgs[40 + variant];
+            case Orientation::TopLeft:      return t_imgs[44 + variant];
+            case Orientation::TopRight:     return t_imgs[48 + variant];
+            case Orientation::BottomLeft:   return t_imgs[52 + variant];
+            case Orientation::BottomRight:  return t_imgs[56 + variant];
+            case Orientation::IGBR:         return t_imgs[60];
+            case Orientation::IGUR:         return t_imgs[61];
+            case Orientation::IGBL:         return t_imgs[62];
+            case Orientation::IGUL:         return t_imgs[63];
+            case Orientation::IGRight:      return t_imgs[64];
+            case Orientation::IGTop:        return t_imgs[65];
+            case Orientation::IGLeft:       return t_imgs[66];
+            case Orientation::IGBottom:     return t_imgs[67];
+            case Orientation::IGSBL:        return t_imgs[68];
+            case Orientation::IGSBR:        return t_imgs[69];
+            case Orientation::IGSUR:        return t_imgs[70];
+            case Orientation::IGSUL:        return t_imgs[71];
+            case Orientation::IGCircle:     return t_imgs[72];
+            case Orientation::IGDiagDR:     return t_imgs[73];
+            case Orientation::IGDiagUR:     return t_imgs[74];
+            case Orientation::Inground1:    return t_imgs[75];
+            case Orientation::Inground2:    return t_imgs[76];
+            case Orientation::Inground3:    return t_imgs[77];
+            case Orientation::Inground4:    return t_imgs[78];
+            case Orientation::Inground5:    return t_imgs[79];
+            case Orientation::Inground6:    return t_imgs[80];
+            case Orientation::Inground7:    return t_imgs[81];
+            case Orientation::Inground8:    return t_imgs[82];
+            case Orientation::Inground9:    return t_imgs[83];
+            case Orientation::Inground10:   return t_imgs[84];
+            case Orientation::Inground11:   return t_imgs[85];
+            case Orientation::Inground12:   return t_imgs[86];
+            case Orientation::Inground13:   return t_imgs[87];
+            case Orientation::Inground14:   return t_imgs[88];
+            case Orientation::Inground15:   return t_imgs[89];
+        }
+    }
 };
 
 void OnDeath(Player& p)
@@ -241,6 +428,34 @@ void UpdatePlayer(float delta)
         if (player.currentFrame > 15) player.currentFrame = 0;
     }
 
+    if (player.animationFramesRemaining > 0)
+    {
+        player.rect.x += player.animationMovement.x;
+        player.rect.y += player.animationMovement.y;
+        player.animationFramesRemaining--;
+
+        std::array<Vector2, 5> newHair = {};
+
+        Vector2 stepPerSegment = { 0, 4 };
+        stepPerSegment.x = player.facingLeft ? 2 : -2;
+
+        int currentHairOffset = player.facingLeft ? -1 : 11;
+        Vector2 currentHairCoords = { player.rect.x + (int)currentHairOffset, player.rect.y - 5 };
+
+        for (int i = 0; i < 5; i++)
+        {
+            if ((player.speed.x == 0 && player.speed.y == 0 && player.currentFrame % 9 < 4)
+                || (player.currentFrame % 12 == 0 || player.currentFrame % 12 == 5 || player.currentFrame % 12 == 10 || player.currentFrame % 12 == 11)
+                    )
+            {
+                currentHairCoords.y -= 2;
+            }
+            float offsetRatio = 0.1f * i / 3.0f;
+            player.hair[i] = { currentHairCoords.x + (offsetRatio * 30) + stepPerSegment.x * i, currentHairCoords.y + (offsetRatio * 30) + stepPerSegment.y * i };
+        }
+        return;
+    }
+
     if (player.speed.x < 0)
     {
         player.facingLeft = true;
@@ -323,23 +538,83 @@ void UpdatePlayer(float delta)
 
     if (player.climbing)
     {
-        if (IsKeyDown(KEY_UP) && player.rect.y > envItems[player.climbingOn].rect.y)
+        EnvItem& climbingEnvItem = envItems[player.climbingOn];
+        if (IsKeyDown(KEY_UP))
         {
-            player.stamina -= delta * 45.45f;
-            player.speed.y = -100;
+            if (player.rect.y > climbingEnvItem.rect.y)
+            {
+                player.stamina -= delta * 45.45f;
+                player.speed.y = -100;
+            }
+            else
+            {
+                EnvItem newClimbingEI;
+                bool switchedEI = false;
+                for (int i = 0; i < envItems.size(); i++)
+                {
+                    const auto& ei = envItems[i];
+                    if (ei.type != Solid)
+                    {
+                        continue;
+                    }
+                    if (ei.rect.x != climbingEnvItem.rect.x)
+                    {
+                        continue;
+                    }
+                    if (ei.rect.y + ei.rect.height == climbingEnvItem.rect.y)
+                    {
+                        player.climbingOn = i;
+                        switchedEI = true;
+                        break;
+                    }
+                }
+                if (switchedEI == false)
+                {
+                    player.speed.y = 0;
+                }
+            }
         }
-        else if (IsKeyDown(KEY_DOWN)
-                 && player.rect.y < envItems[player.climbingOn].rect.y + envItems[player.climbingOn].rect.height - player.rect.height)
+        else if (IsKeyDown(KEY_DOWN))
         {
-            player.speed.y = 100;
+            if (player.rect.y < envItems[player.climbingOn].rect.y + envItems[player.climbingOn].rect.height - player.rect.height)
+            {
+                player.speed.y = 100;
+            }
+            else
+            {
+                EnvItem newClimbingEI;
+                bool switchedEI = false;
+                for (int i = 0; i < envItems.size(); i++)
+                {
+                    const auto& ei = envItems[i];
+                    if (ei.type != Solid)
+                    {
+                        continue;
+                    }
+                    if (ei.rect.x != climbingEnvItem.rect.x)
+                    {
+                        continue;
+                    }
+                    if (ei.rect.y == climbingEnvItem.rect.y + climbingEnvItem.rect.height)
+                    {
+                        player.climbingOn = i;
+                        switchedEI = true;
+                        break;
+                    }
+                }
+                if (switchedEI == false)
+                {
+                    player.speed.y = 0;
+                }
+            }
         }
         else
         {
             if (player.stamina > 0)
             {
                 player.stamina -= delta * 10.0f;
-                player.speed.y = 0;
             }
+            player.speed.y = 0;
         }
 
         if (IsKeyPressed(KEY_SPACE))
@@ -437,37 +712,6 @@ void UpdatePlayer(float delta)
 // Load the file currently in the editor
 void LoadEditorLevel(Camera2D& camera)
 {
-    envItems.clear();
-    for (auto& [x, row] : levelEditor.items())
-    {
-        for (auto& [y, blockType] : row.items())
-        {
-            if (blockType == 1)
-            {
-                envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Solid, { GRAY } });
-            }
-            else if (blockType == 2)
-            {
-                envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Hazard, { RED } });
-            }
-            else if (blockType == 3)
-            {
-                Vector2 newVec = { std::stof(x) * 15, std::stof(y) * 15 };
-                player.respawnPoint = newVec;
-                player.rect.x = newVec.x;
-                player.rect.y = newVec.y;
-            }
-            else if (blockType == 4)
-            {
-                EnvItem switchItem;
-                switchItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
-                switchItem.type = EnvItemType::SwitchLevel;
-                switchItem.levelName = editorLevelChain;
-                envItems.push_back(switchItem);
-            }
-        }
-    }
-
     std::string levelStr;
 
     for (char i : levelName)
@@ -479,6 +723,15 @@ void LoadEditorLevel(Camera2D& camera)
     levelFile.open(SAVES_PATH + levelStr + ".txt");
     levelFile << levelEditor.dump();
     levelFile.close();
+
+    LoadLevelFile(levelStr);
+}
+
+void AnimatePlayerEnteringLevel()
+{
+    Vector2 displacement = { player.respawnPoint.x - player.rect.x, player.respawnPoint.y - player.rect.y };
+    player.animationMovement = { displacement.x / 15, displacement.y / 15 };
+    player.animationFramesRemaining = 15;
 }
 
 // Load a level based on a file
@@ -500,7 +753,12 @@ void LoadLevelFile(const std::string& file)
             int blockType = oldFileFormat ? blockData.get<int>() : blockData["type"].get<int>();
             if (blockType == 1)
             {
-                envItems.push_back({ { std::stof(x) * 15, std::stof(y) * 15, 15, 15 }, EnvItemType::Solid, { GRAY } });
+                EnvItem newItem;
+                newItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
+                newItem.type = EnvItemType::Solid;
+                newItem.color = GRAY;
+                newItem.orientation = blockData["orientation"].get<Orientation>();
+                envItems.push_back(newItem);
             }
             else if (blockType == 2)
             {
@@ -510,8 +768,6 @@ void LoadLevelFile(const std::string& file)
             {
                 Vector2 newVec = { std::stof(x) * 15, std::stof(y) * 15 };
                 player.respawnPoint = newVec;
-                player.rect.x = newVec.x;
-                player.rect.y = newVec.y;
             }
             else if (blockType == 4)
             {
@@ -521,6 +777,25 @@ void LoadLevelFile(const std::string& file)
                 switchItem.levelName = blockData["switchName"].get<std::string>();
                 envItems.push_back(switchItem);
             }
+            else if (blockType == 5)
+            {
+                EnvItem newItem;
+                newItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
+                newItem.type = EnvItemType::LevelEntry;
+                newItem.orientation = blockData["orientation"].get<Orientation>();
+                envItems.push_back(newItem);
+            }
+            else if (blockType == 6)
+            {
+                Vector2 newVec = { std::stof(x) * 15, std::stof(y) * 15 };
+                player.rect.x = newVec.x;
+                player.rect.y = newVec.y;
+                EnvItem newItem;
+                newItem.rect = { std::stof(x) * 15, std::stof(y) * 15, 15, 15 };
+                newItem.type = EnvItemType::LevelEntrySpawn;
+                newItem.orientation = blockData["orientation"].get<Orientation>();
+                envItems.push_back(newItem);
+            }
         }
     }
 
@@ -528,6 +803,18 @@ void LoadLevelFile(const std::string& file)
     player.speed.y = 0;
 
     gameScene = Game;
+
+    AnimatePlayerEnteringLevel();
+}
+
+void LoadFileEditor (const std::string& file)
+{
+    std::string fileContent;
+    std::getline(std::ifstream(SAVES_PATH + file + ".txt"), fileContent, '\0');
+
+    levelEditor = json::parse(fileContent);
+
+    gameScene = LevelEditor;
 }
 
 void UpdateLevelCamera(Camera2D& camera)
@@ -544,11 +831,29 @@ void UpdateLevelCamera(Camera2D& camera)
     {
         camera.target.y -= 1;
     }
-    else if (IsKeyDown(KEY_DOWN))
-    {
+    else if (IsKeyDown(KEY_DOWN)) {
         camera.target.y += 1;
     }
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    if (IsKeyPressed(KEY_Q))
+    {
+        --editorCurrentOrientation;
+    }
+    if (IsKeyPressed(KEY_E))
+    {
+        ++editorCurrentOrientation;
+    }
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), editorPreviewRectangle))
+    {
+        if (levelName.empty())
+        {
+            gameScene = LevelSelect;
+            return;
+        }
+        LoadEditorLevel(camera);
+        gameScene = Game;
+        return;
+    }
+    else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
     {
         int buttonIdx = 1;
         for (const auto& button : editorButtons)
@@ -568,17 +873,6 @@ void UpdateLevelCamera(Camera2D& camera)
             buttonIdx++;
         }
     }
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), editorPreviewRectangle))
-    {
-        if (levelName.empty())
-        {
-            gameScene = LevelSelect;
-            return;
-        }
-        LoadEditorLevel(camera);
-        gameScene = Game;
-        return;
-    }
     else if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
     {
         Vector2 mousePos = GetMousePosition();
@@ -586,7 +880,6 @@ void UpdateLevelCamera(Camera2D& camera)
         float coordX = (int)mousePos.x / 15;
         float coordY = (int)mousePos.y / 15;
         Vector2 coords = { coordX, coordY };
-        std::cout << coords << editorLastSelectedSquare << std::endl;
         if (coords.x == editorLastSelectedSquare.x && coords.y == editorLastSelectedSquare.y)
         {
             return;
@@ -595,7 +888,6 @@ void UpdateLevelCamera(Camera2D& camera)
         {
             editorLastSelectedSquare = coords;
         }
-        std::cout << editorCurrentTileType << std::endl;
         EnvItemJson newItem;
         switch (editorCurrentTileType)
         {
@@ -612,12 +904,20 @@ void UpdateLevelCamera(Camera2D& camera)
                 newItem.type = SwitchLevel;
                 newItem.switchName = editorLevelChain;
                 break;
+            case 5:
+                newItem.type = LevelEntry;
+                break;
+            case 6:
+                newItem.type = LevelEntrySpawn;
+                newItem.enteringFrom = editorLevelChain;
+                break;
             default:
                 break;
         }
         json newItemJson;
         newItemJson["type"] = newItem.type;
         newItemJson["switchName"] = editorLevelChain;
+        newItemJson["orientation"] = editorCurrentOrientation;
         if (levelEditor.contains(std::to_string(coords.x)))
         {
             levelEditor[std::to_string(coords.x)][std::to_string(coords.y)] = newItemJson;
@@ -642,14 +942,16 @@ void UpdateLevelCamera(Camera2D& camera)
     }
 };
 
-std::string UpdateLevelSelect()
+LevelSelectResult UpdateLevelSelect()
 {
     std::vector<Rectangle> rects;
+    std::vector<Rectangle> editorRects;
 
     float row = 0.0f;
     for (const auto& save : std::filesystem::directory_iterator(SAVES_PATH))
     {
         rects.push_back({ 10, 10 + (++row * 50), 100, 30 });
+        editorRects.push_back({ 120, 10 + (row * 50), 35, 30 });
     }
 
     Vector2 mousePos = GetMousePosition();
@@ -666,16 +968,21 @@ std::string UpdateLevelSelect()
         {
             if (CheckCollisionPointRec(mousePos, rects[saveNum]))
             {
-                return save.path().stem().string();
+                std::cout << "Clicked " << save.path().stem().string() << std::endl;
+                return { LevelSelectResultType::LoadLevel, save.path().stem().string() };
+            }
+            if (CheckCollisionPointRec(mousePos, editorRects[saveNum]))
+            {
+                return { LevelSelectResultType::EditLevel, save.path().stem().string() };
             }
             saveNum++;
         }
     }
 
-    return "";
+    return { LevelSelectResultType::None, "" };
 };
 
-std::string UpdateLevelSelectEditor()
+LevelSelectResult UpdateLevelSelectEditor()
 {
     std::vector<Rectangle> rects;
 
@@ -693,15 +1000,38 @@ std::string UpdateLevelSelectEditor()
         {
             if (CheckCollisionPointRec(mousePos, rects[saveNum]))
             {
-                return save.path().stem().string();
+                return { LevelSelectResultType::LoadLevel, save.path().stem().string() };
             }
             saveNum++;
         }
     }
 
-    return "";
+    return { LevelSelectResultType::None, "" };
 };
 
+void UpdateParticles(std::vector<CityParticle>& particles)
+{
+    int newParticleChance = rand() % 4;
+    if (newParticleChance == 0)
+    {
+        int colorInt = rand() % 3;
+        Color newColor = colorInt == 0 ? WHITE : colorInt == 1 ? LIGHTGRAY : PURPLE;
+        float yDir = ((float)rand() / (float)RAND_MAX) - 0.5;
+        particles.push_back({ { SCREEN_WIDTH, static_cast<float>(rand() % SCREEN_HEIGHT) }, newColor, yDir });
+    }
+    for (int i = 0; i < particles.size(); i++)
+    {
+        if (particles[i].pos.x <= 0)
+        {
+            particles.erase(particles.begin() + i);
+        }
+        else
+        {
+            particles[i].pos.x -= 8;
+            particles[i].pos.y += particles[i].yDir;
+        }
+    }
+}
 
 int main()
 {
@@ -761,7 +1091,13 @@ int main()
 
     const Texture2D hair = LoadTexture(ASSETS_PATH"sprites/player/hair00.png");
 
+    const Texture2D background = LoadTexture(ASSETS_PATH"bgs/bg1.png");
+
+    Tileset snowTileset = Tileset("snow");
+
     const std::array<const Texture2D*, 4> spikeSprites = { &upSpikes, &rightSpikes, &downSpikes, &leftSpikes };
+
+    std::vector<CityParticle> particles;
 
     player.rect = {0, 0, 40, 40 };
     player.speed.x = 0;
@@ -792,6 +1128,7 @@ int main()
         if (gameScene == Game)
         {
             UpdatePlayer(deltaTime);
+            UpdateParticles(particles);
             camera.offset = { 0.0f, 0.0f };
         }
         else if (gameScene == LevelEditor)
@@ -802,22 +1139,27 @@ int main()
         else if (gameScene == LevelSelect)
         {
             auto loadFile = UpdateLevelSelect();
-            if (loadFile != std::string(""))
+            if (loadFile.type == LevelSelectResultType::LoadLevel)
             {
-                LoadLevelFile(loadFile);
+                LoadLevelFile(loadFile.filename);
+            }
+            else if (loadFile.type == LevelSelectResultType::EditLevel)
+            {
+                LoadFileEditor(loadFile.filename);
             }
             camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
         }
         else if (gameScene == LevelSelectEditor)
         {
             auto loadFile = UpdateLevelSelectEditor();
-            if (loadFile != std::string(""))
+            if (loadFile.type != LevelSelectResultType::None)
             {
-                editorLevelChain = loadFile;
+                editorLevelChain = loadFile.filename;
                 gameScene = LevelEditor;
 
                 editorCurrentTileType = 4;
             }
+
             camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
         }
 
@@ -827,13 +1169,22 @@ int main()
         //----------------------------------------------------------------------------------
         BeginDrawing();
 
-        ClearBackground(LIGHTGRAY);
+        if (gameScene == Game)
+        {
+            ClearBackground(BLACK);
+            DrawTextureEx(background, { 0, 0 }, 0, (float)SCREEN_WIDTH / background.width, WHITE);
+        }
+        else
+        {
+            ClearBackground(LIGHTGRAY);
+        }
 
         BeginMode2D(camera);
 
         if (gameScene == Game)
         {
-            for (auto ei : envItems) {
+            for (const auto& ei : envItems) {
+                int variant = (int)(ei.rect.x + ei.rect.y) % 4;
                 switch (ei.type)
                 {
                     case EnvItemType::Crystal:
@@ -843,7 +1194,15 @@ int main()
                         DrawRectangleRec(ei.rect, ei.color);
                         break;
                     case EnvItemType::Solid:
-                        DrawRectangleRec(ei.rect, ei.color);
+//                        DrawRectangleRec(ei.rect, ei.color);
+                        DrawTexturePro(snowTileset.get(ei.orientation, variant), { 0, 0, 8, 8 }, ei.rect, { 0, 0 }, 0, WHITE);
+                        break;
+                    case EnvItemType::LevelEntrySpawn:
+                    case EnvItemType::LevelEntry:
+                        if (player.animationFramesRemaining <= 0)
+                        {
+                            DrawTexturePro(snowTileset.get(ei.orientation, variant), { 0, 0, 8, 8 }, ei.rect, { 0, 0 }, 0, WHITE);
+                        }
                         break;
                     case EnvItemType::Hazard:
                         DrawTextureQuad(*spikeSprites[ei.direction], { ei.rect.width / 20, 1 }, { 0, 0 }, ei.rect, WHITE);
@@ -862,7 +1221,7 @@ int main()
             for (int i = 0; i < player.hair.size(); i++)
             {
                 const Vector2 hairCoord = player.hair[i];
-                DrawTextureEx(hair, hairCoord, 0, 3.0f - (i * 0.2f), player.dashRemaining < 100.0f ? HAIR_COLOR_DASHING : HAIR_COLOR_NORMAL);
+                DrawTextureEx(hair, hairCoord, 0, 3.0f - (i * 0.2f), player.dashRemaining < PLAYER_DASH_DIST ? HAIR_COLOR_DASHING : HAIR_COLOR_NORMAL);
             }
 
             //        DrawRectangleRec(playerRect, playerColor);
@@ -898,16 +1257,12 @@ int main()
             {
                 for (auto& [y, blockData] : row.items())
                 {
-//                    std::cout << blockType << std::endl;
                     int blockType = blockData["type"];
-                    if (blockType == 4)
-                    {
-                        std::cout << blockData << std::endl;
-                    }
                     Rectangle boxRect = { std::stof(x) * boxWidth, std::stof(y) * boxHeight, static_cast<float>(boxWidth), static_cast<float>(boxHeight) };
                     if (blockType == 1)
                     {
-                        DrawRectangleRec(boxRect, GRAY);
+                        int variant = (int)(std::stoi(x) +std::stoi(y)) % 4;
+                        DrawTexturePro(snowTileset.get(blockData["orientation"].get<Orientation>(), variant), { 0, 0, 8, 8 }, boxRect, { 0, 0 }, 0, WHITE);
                     }
                     else if (blockType == 2)
                     {
@@ -921,10 +1276,16 @@ int main()
                     {
                         DrawRectangleRec(boxRect, BLUE);
                     }
+                    else if (blockType == 5 || blockType == 6)
+                    {
+                        int variant = (int)(std::stoi(x) +std::stoi(y)) % 4;
+                        DrawTexturePro(snowTileset.get(blockData["orientation"].get<Orientation>(), variant), { 0, 0, 8, 8 }, boxRect, { 0, 0 }, 0, YELLOW);
+                    }
                 }
             }
 
             DrawRectangleRec(editorPreviewRectangle, RED);
+            DrawText("Save and play", editorPreviewRectangle.x, editorPreviewRectangle.y, 15, BLACK);
             DrawRectangleRec(editorLevelnameRectangle, LIME);
 
             for (const auto& button : editorButtons)
@@ -975,7 +1336,9 @@ int main()
             for (const auto& entry : std::filesystem::directory_iterator(path))
             {
                 DrawRectangleRec({ 10, 10 + (row * 50), 100, 30 }, RED);
-                DrawText(entry.path().stem().string().c_str(), 10, 10 + row * 50, 24, BLACK);
+                DrawRectangleRec({ 120, 10 + (row * 50), 60, 30 }, RED);
+                DrawText(entry.path().stem().string().c_str(), 10, 10 + row * 50, 20, BLACK);
+                DrawText("Edit", 120, 10 + row * 50, 20, BLACK);
                 row++;
             }
         }
@@ -986,15 +1349,19 @@ int main()
             for (const auto& entry : std::filesystem::directory_iterator(path))
             {
                 DrawRectangleRec({ 10, 10 + (row * 50), 100, 30 }, RED);
-                DrawText(entry.path().stem().string().c_str(), 10, 10 + row * 50, 24, BLACK);
+                DrawText(entry.path().stem().string().c_str(), 10, 10 + row * 50, 20, BLACK);
                 row++;
             }
         }
         else if (gameScene == Game)
         {
-//            DrawText(TextFormat("Climbing: %f", player.dashRemaining), 20, 20, 10, DARKGRAY);
+            DrawText(TextFormat("Stamina: %f", player.stamina), 20, SCREEN_HEIGHT - 40, 10, DARKGRAY);
             DrawRectangleRec({ 10, 10, 100, 30 }, RED);
-            DrawText("Level select", 10, 10, 18, BLACK);
+            DrawText("Level select", 10, 10, 20, BLACK);
+            for (const auto& p : particles)
+            {
+                DrawRectangleRec({ p.pos.x, p.pos.y, 3, 3 }, p.color);
+            }
         }
 
         EndDrawing();
